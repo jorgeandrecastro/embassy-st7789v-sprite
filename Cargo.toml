@@ -1,0 +1,32 @@
+[package]
+edition       = "2024"
+name          = "embassy-st7789v-sprite"
+version       = "0.1.0"
+authors       = ["Jorge Andre Castro <georgeandrec@gmail.com>"]
+description   = "Moteur de sprites et d'animation style Piskel avec Framebuffer pour l'écran ST7789V via Embassy."
+documentation = "https://docs.rs/embassy-st7789v-sprite"
+readme        = "README.md"
+keywords      = ["embassy", "st7789v", "sprite", "animation", "no-std"]
+categories    = ["embedded", "no-std", "hardware-support"]
+license       = "GPL-2.0-or-later"
+repository    = "https://github.com/jorgeandrecastro/embassy-st7789v"
+
+[lib]
+name = "embassy_st7789v_sprite"
+path = "src/lib.rs"
+
+[dependencies.embassy-st7789v]
+version = "0.3"
+
+[dependencies.embedded-hal]
+version = "1.0"
+
+[dependencies.embedded-hal-async]
+version = "1.0"
+
+[profile.release]
+opt-level     = "z"
+lto           = true
+codegen-units = 1
+panic         = "abort"
+strip         = true
