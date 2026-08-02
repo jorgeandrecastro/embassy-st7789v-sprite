@@ -22,6 +22,7 @@ pour l'écran **ST7789V** (240×320) piloté via **Embassy**.
   - [Clipping automatique](#clipping-automatique)
 - [Référence API](#référence-api)
   - [Constantes](#constantes)
+  - [Symboles grecs et mathématiques](#symboles-grecs-et-mathématiques)
   - [`PiskelSprite`](#piskelsprite)
   - [`SpriteEngine`](#spriteengine)
 - [Exemple d'intégration complet](#exemple-dintégration-complet)
@@ -37,7 +38,7 @@ Tout le dessin s'effectue dans un **buffer RAM de 153 600 octets**
 (240 × 320 pixels, encodés en RGB565 sur 16 bits chacun).
 
 Les opérations de dessin (`clear`, `draw_sprite`, `draw_pixel`, `fill_rect`)
-sont **synchrones** et ne font que modifier ce buffer en mémoire — **aucune**
+sont **synchrones** et ne font que modifier ce buffer en mémoire **aucune**
 communication SPI n'a lieu à ce stade. Une fois la scène composée (fond,
 sprites, HUD…), un seul appel asynchrone à `flush().await` envoie la frame
 complète vers l'écran physique via SPI/DMA.
@@ -63,8 +64,8 @@ Ajoutez la dépendance dans votre `Cargo.toml` :
 
 ```toml
 [dependencies]
-embassy-st7789v-sprite = "0.1"
-embassy-st7789v        = "0.3"
+embassy-st7789v-sprite = "0.2"
+embassy-st7789v        = "0.5"
 embedded-hal            = "1.0"
 embedded-hal-async      = "1.0"
 ```
@@ -152,6 +153,7 @@ totalement) hors écran sans provoquer de panique ni de débordement mémoire.
 | `SCREEN_H` | `usize` | `320` | Hauteur de l'écran ST7789V en pixels. |
 | `FB_SIZE` | `usize` | `76 800` | Nombre total de pixels du framebuffer (`SCREEN_W × SCREEN_H`). |
 | `TRANSPARENT_KEY` | `u16` | `0xF81F` | Couleur-clé RGB565 (magenta) traitée comme transparente par `draw_sprite`. |
+
 
 ### `PiskelSprite`
 
@@ -249,25 +251,43 @@ loop {
 }
 ```
 
-## Exemple d'intégration complet
+### Symboles grecs et mathématiques
 
-Un exemple complet, prêt à adapter à votre carte (initialisation SPI,
-écran, boucle d'animation à ~30 FPS), est disponible dans
-[`examples/integration_complete.rs`](examples/integration_complete.rs).
+Depuis la v0.2, `embassy-st7789v-sprite` réexporte les codes étendus de
+`embassy-st7789v` pour afficher du texte scientifique (λ, θ, π, Δ, °, ±,
+×, ÷, √, ∞, ≈, ≤, ≥) via `draw_str` / `draw_str_buf`.
 
-Il illustre notamment :
+Ces caractères n'existent pas en ASCII : ils sont représentés par des
+octets dans la plage `0x80..=0x8C`, exposés sous forme de constantes à
+utiliser dans vos tableaux `&[u8]` pas de littéral `b'...'` possible.
 
-- l'initialisation du bus SPI et des broches DC/CS/RST via `embassy-rp`
-  (à remplacer par votre propre HAL : `embassy-stm32`, `embassy-nrf`, …) ;
-- la déclaration d'un `PiskelSprite` animé (4 frames de marche) ;
-- la construction du `SpriteEngine` à partir d'un framebuffer `static` ;
-- une boucle de jeu : `clear` → `fill_rect` (décor) → `draw_sprite`
-  (personnage) → `flush().await` → mise à jour de l'état → `Timer::after`.
+| Constante | Symbole | Constante | Symbole | Constante | Symbole |
+|---|---|---|---|---|---|
+| `LAMBDA` | λ | `PLUS_MINUS` | ± | `INFINITY` | ∞ |
+| `THETA` | θ | `TIMES` | × | `APPROX` | ≈ |
+| `PI` | π | `DIVIDE` | ÷ | `LE` | ≤ |
+| `DELTA` | Δ | `SQRT` | √ | `GE` | ≥ |
+| `DEGREE` | ° | | | | |
 
-Lancez-le (une fois adapté à votre cible) avec :
+**Exemple** afficher `T=25°C` puis `R≈3.14×λ` sur un écran mis en tampon :
 
-```bash
-cargo run --example integration_complete --release
+```rust,ignore
+use embassy_st7789v_sprite::{Color, DEGREE, PI, APPROX, TIMES, LAMBDA};
+
+// "T=25°C"
+let temperature: [u8; 6] = [b'T', b'=', b'2', b'5', DEGREE, b'C'];
+display_buffered.draw_str_buf(8, 10, &temperature, Color::YELLOW, Color::BLACK);
+
+// "R=3.14PI" -> avec constante PI mélangée aux octets ASCII
+let formule: [u8; 8] = [b'R', b'=', b'3', b'.', b'1', b'4', TIMES, PI];
+display_buffered.draw_str_buf(8, 30, &formule, Color::CYAN, Color::BLACK);
+```
+
+> ℹ️ Ces symboles s'utilisent avec les méthodes `draw_str` /
+> `draw_str_buf` du crate sous-jacent `embassy-st7789v` (accessible via
+> `engine.driver()` si vous passez par `St7789vBuffered`, ou directement
+> sur votre `St7789v` avant de créer le `SpriteEngine`). Ils ne sont pas
+> destinés au rendu de sprites ceux-ci restent des pixels RGB565 bruts.
 ```
 
 ## Exporter un sprite depuis Piskel
@@ -294,7 +314,7 @@ static COIN_SPRITE: PiskelSprite = PiskelSprite {
 
 ## Performances et contraintes mémoire
 
-- Le framebuffer occupe **153 600 octets** de RAM — vérifiez que votre
+- Le framebuffer occupe **153 600 octets** de RAM vérifiez que votre
   microcontrôleur dispose de suffisamment de mémoire (par exemple, un
   RP2040 avec 264 Ko de SRAM peut l'accueillir, mais cela laisse peu de
   marge pour le reste de l'application).

@@ -25,9 +25,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-st7789v"
-version = "0.3.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2c7cc154ead6c3e35d8e27be87787e7d958513d17a49229d767e2303b332fb7"
+checksum = "2bb764ab2440a76d5fb28bc139dfd28b2154d1902327dfc40265e305341a3bb4"
 dependencies = [
  "embassy-time",
  "embedded-hal 1.0.0",
@@ -36,7 +36,7 @@ dependencies = [
 
 [[package]]
 name = "embassy-st7789v-sprite"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "embassy-st7789v",
  "embedded-hal 1.0.0",
@@ -95,9 +95,9 @@ dependencies = [
 
 [[package]]
 name = "futures-core"
-version = "0.3.32"
+version = "0.3.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e3450815272ef58cec6d564423f6e755e25379b217b0bc688e295ba24df6b1d"
+checksum = "2cd50c473c80f6d7c3670a752354b8e569b1a7cbfdc0419ec88e5edad85e0dc7"
 
 [[package]]
 name = "litrs"

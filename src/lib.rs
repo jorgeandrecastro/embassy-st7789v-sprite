@@ -47,9 +47,15 @@
 //! # static HERO_PIXELS: [u16; 32 * 32 * 4] = [0u16; 32 * 32 * 4];
 //! ```
 
-use embassy_st7789v::{Color, NoPin, St7789v};
+///use embassy_st7789v::{Color, NoPin, St7789v}; plus du tout necessaire .
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::spi::SpiDevice;
+
+// Réexport de tout ce qui est utile pour l'utilisateur final.
+pub use embassy_st7789v::{
+    Color, NoPin, St7789v, St7789vBuffered,
+    APPROX, DEGREE, DELTA, DIVIDE, GE, INFINITY, LAMBDA, LE, PI, PLUS_MINUS, SQRT, THETA, TIMES,
+};
 
 /// Largeur de l'écran ST7789V en pixels.
 pub const SCREEN_W: usize = 240;
