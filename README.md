@@ -25,7 +25,6 @@ pour l'écran **ST7789V** (240×320) piloté via **Embassy**.
   - [Symboles grecs et mathématiques](#symboles-grecs-et-mathématiques)
   - [`PiskelSprite`](#piskelsprite)
   - [`SpriteEngine`](#spriteengine)
-- [Exemple d'intégration complet](#exemple-dintégration-complet)
 - [Exporter un sprite depuis Piskel](#exporter-un-sprite-depuis-piskel)
 - [Performances et contraintes mémoire](#performances-et-contraintes-mémoire)
 - [Licence](#licence)
@@ -77,7 +76,7 @@ voir l'exemple ci-dessous).
 
 ## Démarrage rapide
 
-```rust,ignore
+```rust
 use embassy_st7789v_sprite::{SpriteEngine, PiskelSprite, FB_SIZE, TRANSPARENT_KEY};
 use embassy_st7789v::Color;
 
@@ -155,102 +154,6 @@ totalement) hors écran sans provoquer de panique ni de débordement mémoire.
 | `TRANSPARENT_KEY` | `u16` | `0xF81F` | Couleur-clé RGB565 (magenta) traitée comme transparente par `draw_sprite`. |
 
 
-### `PiskelSprite`
-
-Structure représentant un sprite statique ou une planche d'animation.
-
-```rust,ignore
-pub struct PiskelSprite {
-    pub width: u16,             // largeur d'une frame, en pixels
-    pub height: u16,            // hauteur d'une frame, en pixels
-    pub frame_count: u16,       // nombre total de frames
-    pub pixels: &'static [u16], // pixels RGB565 de toutes les frames, en Flash
-}
-```
-
-Exemple de construction :
-
-```rust,ignore
-static WALK_PIXELS: [u16; 32 * 32 * 6] = [ /* export Piskel */ ];
-
-static PLAYER_WALK: PiskelSprite = PiskelSprite {
-    width: 32,
-    height: 32,
-    frame_count: 6,
-    pixels: &WALK_PIXELS,
-};
-```
-
-### `SpriteEngine`
-
-```rust,ignore
-pub struct SpriteEngine<'a, SPI, DC, RST = NoPin>
-where
-    SPI: SpiDevice,
-    DC: OutputPin,
-    RST: OutputPin;
-```
-
-Moteur de rendu par framebuffer pour le ST7789V. Générique sur le bus SPI,
-la broche DC (data/command) et, optionnellement, la broche RST (reset).
-
-#### Constructeurs
-
-| Fonction | Signature | Description |
-|---|---|---|
-| `SpriteEngine::new` | `fn new(display: &'a mut St7789v<SPI, DC, RST>, framebuffer: &'a mut [u16; FB_SIZE]) -> Self` | Crée un moteur pour un `St7789v` **avec** broche RST matérielle. |
-| `SpriteEngine::new_no_rst` | `fn new_no_rst(display: &'a mut St7789v<SPI, DC, NoPin>, framebuffer: &'a mut [u16; FB_SIZE]) -> Self` | Crée un moteur pour un `St7789v` construit **sans** broche RST matérielle. |
-
-```rust,ignore
-// Avec broche RST
-let mut engine = SpriteEngine::new(&mut display, framebuffer);
-
-// Sans broche RST (RST relié au reset global du MCU, par exemple)
-let mut engine = SpriteEngine::new_no_rst(&mut display, framebuffer);
-```
-
-#### Dessin (synchrone, RAM uniquement)
-
-| Fonction | Signature | Description |
-|---|---|---|
-| `clear` | `fn clear(&mut self, color: Color)` | Remplit tout le framebuffer avec `color`. |
-| `draw_sprite` | `fn draw_sprite(&mut self, sprite: &PiskelSprite, start_x: i16, start_y: i16, frame: u16)` | Dessine la frame `frame` du sprite à la position `(start_x, start_y)`, avec transparence et clipping automatiques. |
-| `draw_pixel` | `fn draw_pixel(&mut self, x: i16, y: i16, color: Color)` | Dessine un pixel isolé (ignoré silencieusement si hors écran). |
-| `fill_rect` | `fn fill_rect(&mut self, x0: i16, y0: i16, x1: i16, y1: i16, color: Color)` | Remplit un rectangle `[x0, x1] × [y0, y1]` (coins inclusifs), clippé aux bords de l'écran. |
-
-```rust,ignore
-engine.clear(Color(0x0000));                       // écran noir
-engine.fill_rect(0, 280, 239, 319, Color(0x0664));   // bande "sol" en bas d'écran
-engine.draw_pixel(120, 160, Color(0xFFFF));          // un pixel blanc au centre
-engine.draw_sprite(&HERO_SPRITE, 100, 200, frame_idx); // héros, frame courante
-```
-
-#### Envoi vers l'écran (asynchrone, SPI)
-
-| Fonction | Signature | Description |
-|---|---|---|
-| `flush` | `async fn flush(&mut self) -> Result<(), SPI::Error>` | Envoie le contenu complet du framebuffer vers l'écran physique. |
-
-```rust,ignore
-engine.flush().await?;
-```
-
-#### Récapitulatif d'une boucle d'animation typique
-
-```rust,ignore
-loop {
-    engine.clear(Color(0x867D));                       // 1. fond
-    engine.fill_rect(0, 280, 239, 319, Color(0x0664));   // 2. décor statique
-    engine.draw_sprite(&HERO_SPRITE, x, 264, frame);     // 3. sprite animé
-
-    engine.flush().await.unwrap();                       // 4. envoi à l'écran
-
-    x += 2;                                               // 5. mise à jour du jeu
-    frame = (frame + 1) % HERO_SPRITE.frame_count;
-    Timer::after(Duration::from_millis(33)).await;        // 6. ~30 FPS
-}
-```
-
 ### Symboles grecs et mathématiques
 
 Depuis la v0.2, `embassy-st7789v-sprite` réexporte les codes étendus de
@@ -271,7 +174,7 @@ utiliser dans vos tableaux `&[u8]` pas de littéral `b'...'` possible.
 
 **Exemple** afficher `T=25°C` puis `R≈3.14×λ` sur un écran mis en tampon :
 
-```rust,ignore
+```rust
 use embassy_st7789v_sprite::{Color, DEGREE, PI, APPROX, TIMES, LAMBDA};
 
 // "T=25°C"
@@ -288,7 +191,106 @@ display_buffered.draw_str_buf(8, 30, &formule, Color::CYAN, Color::BLACK);
 > `engine.driver()` si vous passez par `St7789vBuffered`, ou directement
 > sur votre `St7789v` avant de créer le `SpriteEngine`). Ils ne sont pas
 > destinés au rendu de sprites ceux-ci restent des pixels RGB565 bruts.
+
+
+
+### `PiskelSprite`
+
+Structure représentant un sprite statique ou une planche d'animation.
+
+```rust
+pub struct PiskelSprite {
+    pub width: u16,             // largeur d'une frame, en pixels
+    pub height: u16,            // hauteur d'une frame, en pixels
+    pub frame_count: u16,       // nombre total de frames
+    pub pixels: &'static [u16], // pixels RGB565 de toutes les frames, en Flash
+}
 ```
+
+Exemple de construction :
+
+```rust
+static WALK_PIXELS: [u16; 32 * 32 * 6] = [ /* export Piskel */ ];
+
+static PLAYER_WALK: PiskelSprite = PiskelSprite {
+    width: 32,
+    height: 32,
+    frame_count: 6,
+    pixels: &WALK_PIXELS,
+};
+```
+
+### `SpriteEngine`
+
+```rust
+pub struct SpriteEngine<'a, SPI, DC, RST = NoPin>
+where
+    SPI: SpiDevice,
+    DC: OutputPin,
+    RST: OutputPin;
+```
+
+Moteur de rendu par framebuffer pour le ST7789V. Générique sur le bus SPI,
+la broche DC (data/command) et, optionnellement, la broche RST (reset).
+
+
+#### Constructeurs
+
+| Fonction | Signature | Description |
+|---|---|---|
+| `SpriteEngine::new` | `fn new(display: &'a mut St7789v<SPI, DC, RST>, framebuffer: &'a mut [u16; FB_SIZE]) -> Self` | Crée un moteur pour un `St7789v` **avec** broche RST matérielle. |
+| `SpriteEngine::new_no_rst` | `fn new_no_rst(display: &'a mut St7789v<SPI, DC, NoPin>, framebuffer: &'a mut [u16; FB_SIZE]) -> Self` | Crée un moteur pour un `St7789v` construit **sans** broche RST matérielle. |
+
+```rust
+// Avec broche RST
+let mut engine = SpriteEngine::new(&mut display, framebuffer);
+
+// Sans broche RST (RST relié au reset global du MCU, par exemple)
+let mut engine = SpriteEngine::new_no_rst(&mut display, framebuffer);
+```
+
+#### Dessin (synchrone, RAM uniquement)
+
+| Fonction | Signature | Description |
+|---|---|---|
+| `clear` | `fn clear(&mut self, color: Color)` | Remplit tout le framebuffer avec `color`. |
+| `draw_sprite` | `fn draw_sprite(&mut self, sprite: &PiskelSprite, start_x: i16, start_y: i16, frame: u16)` | Dessine la frame `frame` du sprite à la position `(start_x, start_y)`, avec transparence et clipping automatiques. |
+| `draw_pixel` | `fn draw_pixel(&mut self, x: i16, y: i16, color: Color)` | Dessine un pixel isolé (ignoré silencieusement si hors écran). |
+| `fill_rect` | `fn fill_rect(&mut self, x0: i16, y0: i16, x1: i16, y1: i16, color: Color)` | Remplit un rectangle `[x0, x1] × [y0, y1]` (coins inclusifs), clippé aux bords de l'écran. |
+
+```rust
+engine.clear(Color(0x0000));                       // écran noir
+engine.fill_rect(0, 280, 239, 319, Color(0x0664));   // bande "sol" en bas d'écran
+engine.draw_pixel(120, 160, Color(0xFFFF));          // un pixel blanc au centre
+engine.draw_sprite(&HERO_SPRITE, 100, 200, frame_idx); // héros, frame courante
+```
+
+#### Envoi vers l'écran (asynchrone, SPI)
+
+| Fonction | Signature | Description |
+|---|---|---|
+| `flush` | `async fn flush(&mut self) -> Result<(), SPI::Error>` | Envoie le contenu complet du framebuffer vers l'écran physique. |
+
+```rust
+engine.flush().await?;
+```
+
+#### Récapitulatif d'une boucle d'animation typique
+
+```rust
+loop {
+    engine.clear(Color(0x867D));                       // 1. fond
+    engine.fill_rect(0, 280, 239, 319, Color(0x0664));   // 2. décor statique
+    engine.draw_sprite(&HERO_SPRITE, x, 264, frame);     // 3. sprite animé
+
+    engine.flush().await.unwrap();                       // 4. envoi à l'écran
+
+    x += 2;                                               // 5. mise à jour du jeu
+    frame = (frame + 1) % HERO_SPRITE.frame_count;
+    Timer::after(Duration::from_millis(33)).await;        // 6. ~30 FPS
+}
+```
+
 
 ## Exporter un sprite depuis Piskel
 
@@ -300,7 +302,7 @@ display_buffered.draw_str_buf(8, 30, &formule, Color::CYAN, Color::BLACK);
 4. Construisez un `PiskelSprite` avec la largeur/hauteur d'une frame, le
    nombre de frames, et une référence vers ce tableau.
 
-```rust,ignore
+```rust
 // 3 frames de 24x24 pixels
 static COIN_PIXELS: [u16; 24 * 24 * 3] = [ /* frame 0, frame 1, frame 2 */ ];
 
@@ -325,6 +327,9 @@ static COIN_SPRITE: PiskelSprite = PiskelSprite {
 - Toutes les opérations de dessin sont en `O(pixels affectés)` et ne
   provoquent aucune allocation (`#![no_std]`, pas de dépendance `alloc`).
 
+
 ## Licence
 
 Distribué sous licence **GPL-2.0-or-later**. Voir [LICENSE](LICENSE) pour le texte complet.
+
+## Copyright (C) 2026 Jorge Andre Castro
