@@ -25,9 +25,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-st7789v"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bb764ab2440a76d5fb28bc139dfd28b2154d1902327dfc40265e305341a3bb4"
+checksum = "a6a687b69bce3b7a9595476f93a012805fc7d740088ead0e988b15dfcad68f7b"
 dependencies = [
  "embassy-time",
  "embedded-hal 1.0.0",
@@ -36,7 +36,7 @@ dependencies = [
 
 [[package]]
 name = "embassy-st7789v-sprite"
-version = "0.2.0"
+version = "0.4.0"
 dependencies = [
  "embassy-st7789v",
  "embedded-hal 1.0.0",

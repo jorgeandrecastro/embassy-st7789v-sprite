@@ -36,25 +36,28 @@ pour l'écran **ST7789V** (240×320) piloté via **Embassy**.
 Tout le dessin s'effectue dans un **buffer RAM de 153 600 octets**
 (240 × 320 pixels, encodés en RGB565 sur 16 bits chacun).
 
-Les opérations de dessin (`clear`, `draw_sprite`, `draw_pixel`, `fill_rect`)
-sont **synchrones** et ne font que modifier ce buffer en mémoire **aucune**
-communication SPI n'a lieu à ce stade. Une fois la scène composée (fond,
-sprites, HUD…), un seul appel asynchrone à `flush().await` envoie la frame
-complète vers l'écran physique via SPI/DMA.
+Les opérations de dessin (`clear`, `draw_sprite`, `draw_pixel`, `fill_rect`,
+`draw_str`, `draw_u32`, `draw_f32`) sont **synchrones** et ne font que
+modifier ce buffer en mémoire  aucune communication SPI n'a lieu à ce
+stade. Une fois la scène composée (fond, sprites, HUD…), un seul appel
+asynchrone à `flush().await` envoie la frame complète vers l'écran
+physique via SPI/DMA.
 
 Ce découpage (composition en RAM puis envoi en un bloc) évite tout
 scintillement et correspond à une double-bufferisation logicielle, adaptée
-aux contraintes mémoire de l'embarqué.
+aux contraintes mémoire de l'embarqué. **Le texte suit désormais ce même
+chemin** (depuis la 0.4) : plus de clignotement lié à un dessin de texte
+en dehors du framebuffer.
 
 ```text
-┌─────────────┐   clear() / draw_sprite() / fill_rect()   ┌─────────────┐
-│   Votre      │ ─────────────────────────────────────── │ Framebuffer  │
-│   logique    │                                           │ RAM (RAM)    │
-│   de jeu     │ ←──────────── flush().await ───────────  │ 153 600 o.   │
-└─────────────┘             (un seul transfert SPI)        └─────────────┘
-                                                                   │
-                                                                   ▼
-                                                            Écran ST7789V
+┌─────────────┐  clear() / draw_sprite() / draw_str() / fill_rect()  ┌─────────────┐
+│   Votre      │ ─────────────────────────────────────────────────  │ Framebuffer  │
+│   logique    │                                                     │ RAM          │
+│   de jeu     │ ←──────────────── flush().await ─────────────────  │ 153 600 o.   │
+└─────────────┘             (un seul transfert SPI)                  └─────────────┘
+                                                                             │
+                                                                             ▼
+                                                                      Écran ST7789V
 ```
 
 ## Installation
@@ -63,8 +66,8 @@ Ajoutez la dépendance dans votre `Cargo.toml` :
 
 ```toml
 [dependencies]
-embassy-st7789v-sprite = "0.2"
-embassy-st7789v        = "0.5"
+embassy-st7789v-sprite = "0.4"
+embassy-st7789v        = "0.6"
 embedded-hal            = "1.0"
 embedded-hal-async      = "1.0"
 ```
@@ -97,9 +100,11 @@ async fn dessiner_une_frame(display: &mut embassy_st7789v::St7789v<impl embedded
     let framebuffer = unsafe { &mut *core::ptr::addr_of_mut!(FRAMEBUFFER) };
     let mut engine = SpriteEngine::new(display, framebuffer);
 
-    engine.clear(Color(0x0000));                  // 1. fond noir
-    engine.draw_sprite(&HERO_SPRITE, 100, 200, 0); // 2. héros, frame 0, position (100, 200)
-    engine.flush().await.unwrap();                // 3. envoi complet vers l'écran
+    engine.clear(Color(0x0000));                     // 1. fond noir
+    engine.draw_sprite(&HERO_SPRITE, 100, 200, 0);    // 2. héros, frame 0, position (100, 200)
+    engine.draw_str(8, 10, b"SCORE: ", Color::WHITE, Color::BLACK); // 3. texte, dans le buffer
+    engine.draw_u32(62, 10, 42, Color::YELLOW, Color::BLACK);        // 4. valeur, dans le buffer
+    engine.flush().await.unwrap();                    // 5. envoi complet vers l'écran
 }
 ```
 
@@ -114,6 +119,9 @@ async fn dessiner_une_frame(display: &mut embassy_st7789v::St7789v<impl embedded
   bien trop petite pour l'accueillir).
 - `SpriteEngine` n'en prend jamais la propriété : il emprunte une référence
   mutable pendant sa durée de vie (`'a`).
+- **Depuis la 0.4**, le texte (`draw_str`, `draw_u32`, `draw_f32`) écrit
+  aussi dans ce buffer — plus aucune méthode de `SpriteEngine` ne
+  communique en SPI en dehors de `flush()`.
 
 ### Sprites Piskel
 
@@ -137,10 +145,12 @@ contenu déjà dessiné en dessous (fond, autre sprite…).
 
 ### Clipping automatique
 
-`draw_sprite`, `draw_pixel` et `fill_rect` acceptent des coordonnées
-signées (`i16`) et effectuent un clipping automatique contre les bords de
-l'écran `[0, 240[ × [0, 320[`. Un sprite peut donc être partiellement (ou
-totalement) hors écran sans provoquer de panique ni de débordement mémoire.
+`draw_sprite`, `draw_pixel`, `fill_rect`, `draw_char`, `draw_str`,
+`draw_u32` et `draw_f32` acceptent des coordonnées signées (`i16`) et
+effectuent un clipping automatique contre les bords de l'écran
+`[0, 240[ × [0, 320[`. Un sprite ou un texte peut donc sortir
+partiellement (ou totalement) de l'écran sans provoquer de panique ni de
+débordement mémoire.
 
 ## Référence API
 
@@ -153,16 +163,17 @@ totalement) hors écran sans provoquer de panique ni de débordement mémoire.
 | `FB_SIZE` | `usize` | `76 800` | Nombre total de pixels du framebuffer (`SCREEN_W × SCREEN_H`). |
 | `TRANSPARENT_KEY` | `u16` | `0xF81F` | Couleur-clé RGB565 (magenta) traitée comme transparente par `draw_sprite`. |
 
-
 ### Symboles grecs et mathématiques
 
-Depuis la v0.2, `embassy-st7789v-sprite` réexporte les codes étendus de
-`embassy-st7789v` pour afficher du texte scientifique (λ, θ, π, Δ, °, ±,
-×, ÷, √, ∞, ≈, ≤, ≥) via `draw_str` / `draw_str_buf`.
+Depuis la 0.2, ce crate expose des codes étendus pour du texte scientifique
+(λ, θ, π, Δ, °, ±, ×, ÷, √, ∞, ≈, ≤, ≥). **Depuis la 0.4**, ces symboles
+sont directement pris en charge par [`SpriteEngine::draw_str`] et
+écrivent dans le framebuffer local (police 5×7 dupliquée dans ce crate,
+indépendante de celle de `embassy-st7789v`).
 
 Ces caractères n'existent pas en ASCII : ils sont représentés par des
 octets dans la plage `0x80..=0x8C`, exposés sous forme de constantes à
-utiliser dans vos tableaux `&[u8]` pas de littéral `b'...'` possible.
+utiliser dans vos tableaux `&[u8]`  pas de littéral `b'...'` possible.
 
 | Constante | Symbole | Constante | Symbole | Constante | Symbole |
 |---|---|---|---|---|---|
@@ -172,27 +183,23 @@ utiliser dans vos tableaux `&[u8]` pas de littéral `b'...'` possible.
 | `DELTA` | Δ | `SQRT` | √ | `GE` | ≥ |
 | `DEGREE` | ° | | | | |
 
-**Exemple** afficher `T=25°C` puis `R≈3.14×λ` sur un écran mis en tampon :
+**Exemple** : afficher `T=25°C` puis `R≈3.14×λ` dans le framebuffer, avant
+un unique `flush()` :
 
 ```rust
-use embassy_st7789v_sprite::{Color, DEGREE, PI, APPROX, TIMES, LAMBDA};
+use embassy_st7789v_sprite::{Color, DEGREE, APPROX, TIMES, LAMBDA};
 
 // "T=25°C"
-let temperature: [u8; 6] = [b'T', b'=', b'2', b'5', DEGREE, b'C'];
-display_buffered.draw_str_buf(8, 10, &temperature, Color::YELLOW, Color::BLACK);
+engine.draw_str(8, 190, &[b'T', b'=', b'2', b'5', DEGREE, b'C'], Color::YELLOW, Color::BLACK);
 
-// "R=3.14PI" -> avec constante PI mélangée aux octets ASCII
-let formule: [u8; 8] = [b'R', b'=', b'3', b'.', b'1', b'4', TIMES, PI];
-display_buffered.draw_str_buf(8, 30, &formule, Color::CYAN, Color::BLACK);
+// "R≈3.14×λ"
+engine.draw_str(8, 210, &[b'R', APPROX, b'3', b'.', b'1', b'4', TIMES, LAMBDA], Color::CYAN, Color::BLACK);
 ```
 
-> ℹ️ Ces symboles s'utilisent avec les méthodes `draw_str` /
-> `draw_str_buf` du crate sous-jacent `embassy-st7789v` (accessible via
-> `engine.driver()` si vous passez par `St7789vBuffered`, ou directement
-> sur votre `St7789v` avant de créer le `SpriteEngine`). Ils ne sont pas
-> destinés au rendu de sprites ceux-ci restent des pixels RGB565 bruts.
-
-
+> ℹ️ Contrairement aux versions précédentes, il n'est plus nécessaire de
+> passer par `engine.driver()` ou par les méthodes `draw_str`/`draw_str_buf`
+> de `embassy-st7789v` : `SpriteEngine` gère désormais son propre rendu de
+> texte, dans le même framebuffer que les sprites.
 
 ### `PiskelSprite`
 
@@ -233,7 +240,6 @@ where
 Moteur de rendu par framebuffer pour le ST7789V. Générique sur le bus SPI,
 la broche DC (data/command) et, optionnellement, la broche RST (reset).
 
-
 #### Constructeurs
 
 | Fonction | Signature | Description |
@@ -265,6 +271,28 @@ engine.draw_pixel(120, 160, Color(0xFFFF));          // un pixel blanc au centre
 engine.draw_sprite(&HERO_SPRITE, 100, 200, frame_idx); // héros, frame courante
 ```
 
+#### Texte (synchrone, RAM uniquement — nouveau en 0.4)
+
+| Fonction | Signature | Description |
+|---|---|---|
+| `draw_char` | `fn draw_char(&mut self, x: i16, y: i16, glyph_idx: usize, fg: Color, bg: Color) -> i16` | Dessine un glyphe 5×7 par index brut. Retourne le x après le glyphe. |
+| `draw_str` | `fn draw_str(&mut self, x: i16, y: i16, text: &[u8], fg: Color, bg: Color) -> i16` | Affiche une chaîne ASCII (+ symboles étendus `0x80..=0x8C`). Retourne le x après le texte. |
+| `draw_u32` | `fn draw_u32(&mut self, x: i16, y: i16, val: u32, fg: Color, bg: Color) -> i16` | Affiche un entier non signé 32 bits. |
+| `draw_f32` | `fn draw_f32(&mut self, x: i16, y: i16, val: f32, decimales: u8, fg: Color, bg: Color) -> i16` | Affiche un flottant avec `decimales` chiffres après la virgule ; gère `NaN`/`+Inf`/`-Inf`. |
+
+Ces méthodes utilisent une **police 5×7 dupliquée localement** dans ce
+crate (mêmes glyphes/index que celle de `embassy-st7789v`), afin d'écrire
+directement dans le framebuffer partagé  sans quoi le texte serait
+envoyé par un chemin SPI séparé du reste de la scène, provoquant un
+clignotement visible à chaque frame.
+
+```rust
+engine.draw_str(8, 195, b"LAMAS: ", Color::WHITE, Color::BLACK);
+engine.draw_u32(62, 195, 3, Color::YELLOW, Color::BLACK);
+let x = engine.draw_f32(8, 210, 23.5, 1, Color::CYAN, Color::BLACK);
+engine.draw_str(x, 210, &[embassy_st7789v_sprite::DEGREE, b'C'], Color::CYAN, Color::BLACK);
+```
+
 #### Envoi vers l'écran (asynchrone, SPI)
 
 | Fonction | Signature | Description |
@@ -275,22 +303,41 @@ engine.draw_sprite(&HERO_SPRITE, 100, 200, frame_idx); // héros, frame courante
 engine.flush().await?;
 ```
 
+L'implémentation actuelle utilise `St7789v::blit_u16` pour envoyer en
+une seule fois le buffer RGB565 :
+
+```rust
+pub async fn flush(&mut self) -> Result<(), SPI::Error> {
+    self.display
+        .blit_u16(0, 0, (SCREEN_W - 1) as u16, (SCREEN_H - 1) as u16, self.framebuffer)
+        .await
+}
+```
+
 #### Récapitulatif d'une boucle d'animation typique
 
 ```rust
 loop {
-    engine.clear(Color(0x867D));                       // 1. fond
-    engine.fill_rect(0, 280, 239, 319, Color(0x0664));   // 2. décor statique
-    engine.draw_sprite(&HERO_SPRITE, x, 264, frame);     // 3. sprite animé
-
-    engine.flush().await.unwrap();                       // 4. envoi à l'écran
-
-    x += 2;                                               // 5. mise à jour du jeu
+    // 1. Mise à jour de l'état AVANT le rendu
+    x += 2;
     frame = (frame + 1) % HERO_SPRITE.frame_count;
-    Timer::after(Duration::from_millis(33)).await;        // 6. ~30 FPS
+
+    // 2. Composition complète dans le framebuffer, un seul flush
+    engine.clear(Color(0x867D));                         // fond
+    engine.fill_rect(0, 280, 239, 319, Color(0x0664));     // décor statique
+    engine.draw_sprite(&HERO_SPRITE, x, 264, frame);       // sprite animé
+    engine.draw_str(8, 10, b"SCORE: ", Color::WHITE, Color::BLACK);
+    engine.draw_u32(62, 10, score, Color::YELLOW, Color::BLACK);
+
+    engine.flush().await.unwrap();                         // envoi à l'écran
+
+    Timer::after(Duration::from_millis(33)).await;         // ~30 FPS
 }
 ```
 
+> ⚠️ Le texte doit être dessiné **avant** `flush()`, dans le même bloc que
+> les sprites — jamais après, sinon il serait de nouveau envoyé par un
+> chemin séparé et clignoterait.
 
 ## Exporter un sprite depuis Piskel
 
@@ -316,17 +363,20 @@ static COIN_SPRITE: PiskelSprite = PiskelSprite {
 
 ## Performances et contraintes mémoire
 
-- Le framebuffer occupe **153 600 octets** de RAM vérifiez que votre
+- Le framebuffer occupe **153 600 octets** de RAM  vérifiez que votre
   microcontrôleur dispose de suffisamment de mémoire (par exemple, un
   RP2040 avec 264 Ko de SRAM peut l'accueillir, mais cela laisse peu de
   marge pour le reste de l'application).
-- `flush()` envoie les 76 800 pixels **un par un** via `display.draw_pixel`
-  (pas de transfert DMA en bloc au niveau de ce crate) : le coût dépend
-  donc directement de la fréquence SPI configurée et de l'implémentation
-  sous-jacente de `embassy-st7789v`.
+- `flush()` envoie le framebuffer entier en un seul flux SPI continu en
+  s'appuyant sur `St7789v::blit_u16` fourni par `embassy-st7789v` : la
+  fenêtre d'écriture est ouverte une seule fois et tous les pixels sont
+  transférés en bloc, ce qui permet des transferts beaucoup plus
+  efficaces (DMA possible selon le pilote/plateforme).
+- Le texte (`draw_str`, `draw_u32`, `draw_f32`) est en `O(caractères ×
+  35 pixels)` et s'exécute entièrement en RAM, sans aucun coût SPI
+  jusqu'au `flush()` final.
 - Toutes les opérations de dessin sont en `O(pixels affectés)` et ne
   provoquent aucune allocation (`#![no_std]`, pas de dépendance `alloc`).
-
 
 ## Licence
 

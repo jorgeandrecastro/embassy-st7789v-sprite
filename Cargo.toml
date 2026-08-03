@@ -1,7 +1,7 @@
 [package]
 edition       = "2024"
 name          = "embassy-st7789v-sprite"
-version       = "0.2.0"
+version       = "0.4.0"
 authors       = ["Jorge Andre Castro <georgeandrec@gmail.com>"]
 description   = "Moteur de sprites et d'animation style Piskel avec Framebuffer pour l'écran ST7789V via Embassy."
 documentation = "https://docs.rs/embassy-st7789v-sprite"
@@ -16,7 +16,8 @@ name = "embassy_st7789v_sprite"
 path = "src/lib.rs"
 
 [dependencies.embassy-st7789v]
-version = "0.5"
+version = "0.6"
+
 
 [dependencies.embedded-hal]
 version = "1.0"
